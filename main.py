@@ -377,6 +377,9 @@ class Bot(commands.Bot):
         self.tree.add_command(add_command)
         self.tree.add_command(remove_command)
         self.tree.add_command(deletechannel_command)
+        self.tree.add_command(giveaway_command)
+        self.tree.add_command(endgiveaway_command)
+        self.tree.add_command(help_command)
         self.add_view(TempMailPanelView(self))
         self.add_view(DeleteAccountView(self))
         self.add_view(FileSharePanelView(self))
@@ -2972,32 +2975,38 @@ async def unban_command(ctx, user_id: int = None):
     await ctx.send(f"🔓 **{user.user}** has been unbanned.")
 
 
-@commands.command(name="giveaway")
-@has_staff_role()
-async def giveaway_command(ctx, winners: int = 1, time: str = None, *, title: str = "Giveaway"):
-    if not time:
-        await ctx.send("Usage: `?giveaway <winners> <time> <title>`\nTime examples: `30s`, `10m`, `2h`, `1d`", delete_after=10)
+@app_commands.command(name="giveaway", description="Create a giveaway")
+@app_commands.describe(winners="Number of winners", duration="Duration (e.g. 30s, 10m, 2h, 1d)", title="Giveaway title")
+@app_commands.default_permissions(manage_messages=True)
+async def giveaway_command(interaction: discord.Interaction, winners: int = 1, duration: str = None, title: str = "Giveaway"):
+    role = interaction.guild.get_role(STAFF_ROLE_ID)
+    if not role or role not in interaction.user.roles:
+        await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
         return
-    td = parse_duration(time)
+    if not duration:
+        await interaction.response.send_message("Usage: `/giveaway <winners> <duration> <title>`\nTime examples: `30s`, `10m`, `2h`, `1d`", ephemeral=True)
+        return
+    td = parse_duration(duration)
     if not td:
-        await ctx.send("Invalid time format. Use: `30s`, `10m`, `2h`, `1d`", delete_after=10)
+        await interaction.response.send_message("Invalid time format. Use: `30s`, `10m`, `2h`, `1d`", ephemeral=True)
         return
+    await interaction.response.send_message("Giveaway started!", ephemeral=True)
     end_time = discord.utils.utcnow() + td
     embed = discord.Embed(
         title=title,
         description=f"React with 🎉 to enter!\n\n**Winners:** {winners}\n**Ends:** <t:{int(end_time.timestamp())}:R>",
         color=discord.Color.gold(),
     )
-    embed.set_footer(text=f"Started by {ctx.author}")
-    msg = await ctx.send(embed=embed)
+    embed.set_footer(text=f"Started by {interaction.user}")
+    msg = await interaction.channel.send(embed=embed)
     await msg.add_reaction("🎉")
     active_giveaways[msg.id] = {
-        "channel_id": ctx.channel.id,
+        "channel_id": interaction.channel.id,
         "message_id": msg.id,
         "end_time": end_time,
         "winners": winners,
         "title": title,
-        "author_id": ctx.author.id,
+        "author_id": interaction.user.id,
         "ended": False,
     }
     await asyncio.sleep(td.total_seconds())
@@ -3005,7 +3014,7 @@ async def giveaway_command(ctx, winners: int = 1, time: str = None, *, title: st
         return
     active_giveaways[msg.id]["ended"] = True
     try:
-        msg = await ctx.channel.fetch_message(msg.id)
+        msg = await interaction.channel.fetch_message(msg.id)
     except discord.NotFound:
         return
     users = []
@@ -3020,7 +3029,6 @@ async def giveaway_command(ctx, winners: int = 1, time: str = None, *, title: st
         )
         await msg.edit(embed=embed)
         return
-    import random
     winner_count = min(winners, len(users))
     chosen = random.sample(users, winner_count)
     winner_mentions = ", ".join(w.mention for w in chosen)
@@ -3030,27 +3038,31 @@ async def giveaway_command(ctx, winners: int = 1, time: str = None, *, title: st
         color=discord.Color.green(),
     )
     await msg.edit(embed=embed)
-    await ctx.send(f"🎉 Congratulations {winner_mentions}! You won **{title}**!")
+    await interaction.channel.send(f"🎉 Congratulations {winner_mentions}! You won **{title}**!")
 
 
-@commands.command(name="endgiveaway")
-@has_staff_role()
-async def endgiveaway_command(ctx, message_id: int = None):
-    if not message_id:
-        await ctx.send("Usage: `?endgiveaway <message_id>`", delete_after=5)
+@app_commands.command(name="endgiveaway", description="End a giveaway early")
+@app_commands.describe(message_id="Message ID of the giveaway to end")
+@app_commands.default_permissions(manage_messages=True)
+async def endgiveaway_command(interaction: discord.Interaction, message_id: str):
+    role = interaction.guild.get_role(STAFF_ROLE_ID)
+    if not role or role not in interaction.user.roles:
+        await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
         return
-    giveaway = active_giveaways.get(message_id)
+    msg_id = int(message_id)
+    giveaway = active_giveaways.get(msg_id)
     if not giveaway:
-        await ctx.send("Giveaway not found.", delete_after=5)
+        await interaction.response.send_message("Giveaway not found.", ephemeral=True)
         return
     if giveaway["ended"]:
-        await ctx.send("This giveaway already ended.", delete_after=5)
+        await interaction.response.send_message("This giveaway already ended.", ephemeral=True)
         return
     giveaway["ended"] = True
     try:
-        msg = await ctx.channel.fetch_message(message_id)
-    except discord.NotFound:
-        await ctx.send("Giveaway message not found.", delete_after=5)
+        g_channel = interaction.guild.get_channel(giveaway["channel_id"])
+        msg = await g_channel.fetch_message(msg_id)
+    except (discord.NotFound, AttributeError):
+        await interaction.response.send_message("Giveaway message not found.", ephemeral=True)
         return
     users = []
     async for user in msg.reactions[0].users():
@@ -3063,9 +3075,8 @@ async def endgiveaway_command(ctx, message_id: int = None):
             color=discord.Color.greyple(),
         )
         await msg.edit(embed=embed)
-        await ctx.send("Giveaway ended — no entries.")
+        await interaction.response.send_message("Giveaway ended — no entries.")
         return
-    import random
     winner_count = min(giveaway["winners"], len(users))
     chosen = random.sample(users, winner_count)
     winner_mentions = ", ".join(w.mention for w in chosen)
@@ -3075,18 +3086,27 @@ async def endgiveaway_command(ctx, message_id: int = None):
         color=discord.Color.green(),
     )
     await msg.edit(embed=embed)
-    await ctx.send(f"🎉 Congratulations {winner_mentions}! You won **{giveaway['title']}**!")
+    await interaction.response.send_message(f"🎉 Congratulations {winner_mentions}! You won **{giveaway['title']}**!")
 
 
-@commands.command(name="help")
-async def help_command(ctx):
+@app_commands.command(name="help", description="Show all available commands")
+async def help_command(interaction: discord.Interaction):
     embed = discord.Embed(
         title="Bot Commands",
-        description="All available `?` commands",
+        description="All available commands",
         color=discord.Color.blurple(),
     )
     embed.add_field(
-        name="Moderation",
+        name="Staff (Slash Commands)",
+        value=(
+            "`/giveaway <winners> <duration> <title>` — Create giveaway\n"
+            "`/endgiveaway <message_id>` — End giveaway early\n"
+            "`/deletechannel` — Delete your private channel"
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="Moderation (Prefix Commands)",
         value=(
             "`?ban @user [duration] [reason]` — Ban a user\n"
             "`?unban <userid>` — Unban a user\n"
@@ -3100,18 +3120,10 @@ async def help_command(ctx):
         inline=False,
     )
     embed.add_field(
-        name="Roles",
+        name="Roles (Prefix Commands)",
         value=(
             "`?role @role` — Assign role to all members\n"
             "`?autorole @role` — Auto-assign role on join"
-        ),
-        inline=False,
-    )
-    embed.add_field(
-        name="Giveaway",
-        value=(
-            "`?giveaway <winners> <time> <title>` — Create giveaway\n"
-            "`?endgiveaway <message_id>` — End giveaway early"
         ),
         inline=False,
     )
@@ -3126,7 +3138,7 @@ async def help_command(ctx):
         ),
         inline=False,
     )
-    await ctx.send(embed=embed)
+    await interaction.response.send_message(embed=embed)
 
 
 @app_commands.command(name="deletechannel", description="Delete your private channel")
@@ -3268,9 +3280,6 @@ def main():
     bot.add_command(mute_command)
     bot.add_command(unmute_command)
     bot.add_command(unban_command)
-    bot.add_command(giveaway_command)
-    bot.add_command(endgiveaway_command)
-    bot.add_command(help_command)
     bot.event(on_member_join)
     bot.add_view(TempMailPanelView(bot))
     bot.add_view(DeleteAccountView(bot))
