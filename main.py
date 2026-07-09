@@ -380,6 +380,16 @@ class Bot(commands.Bot):
         self.tree.add_command(giveaway_command)
         self.tree.add_command(endgiveaway_command)
         self.tree.add_command(help_command)
+        self.tree.add_command(lock_command)
+        self.tree.add_command(unlock_command)
+        self.tree.add_command(purge_command)
+        self.tree.add_command(ban_command)
+        self.tree.add_command(kick_command)
+        self.tree.add_command(mute_command)
+        self.tree.add_command(unmute_command)
+        self.tree.add_command(unban_command)
+        self.tree.add_command(role_command)
+        self.tree.add_command(autorole_command)
         self.add_view(TempMailPanelView(self))
         self.add_view(DeleteAccountView(self))
         self.add_view(FileSharePanelView(self))
@@ -2709,40 +2719,43 @@ ADMIN_IDS = [763815168894828576, 529014657537540096]
 active_giveaways = {}
 
 
-def has_staff_role():
-    async def predicate(ctx):
-        role = ctx.guild.get_role(STAFF_ROLE_ID)
-        if role and role in ctx.author.roles:
-            return True
-        await ctx.send("You don't have permission to use this command.", delete_after=5)
-        return False
-    return commands.check(predicate)
+@app_commands.command(name="lock", description="Lock the current channel")
+@app_commands.default_permissions(manage_messages=True)
+async def lock_command(interaction: discord.Interaction):
+    role = interaction.guild.get_role(STAFF_ROLE_ID)
+    if not role or role not in interaction.user.roles:
+        await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
+        return
+    await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=False)
+    await interaction.response.send_message("🔒 Channel locked. Members can view but not type.")
 
 
-@commands.command(name="lock")
-@has_staff_role()
-async def lock_command(ctx):
-    await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=False)
-    await ctx.send("🔒 Channel locked. Members can view but not type.")
-
-
-@commands.command(name="unlock")
-@has_staff_role()
-async def unlock_command(ctx):
-    await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=True)
-    await ctx.send("🔓 Channel unlocked.")
+@app_commands.command(name="unlock", description="Unlock the current channel")
+@app_commands.default_permissions(manage_messages=True)
+async def unlock_command(interaction: discord.Interaction):
+    role = interaction.guild.get_role(STAFF_ROLE_ID)
+    if not role or role not in interaction.user.roles:
+        await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
+        return
+    await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=True)
+    await interaction.response.send_message("🔓 Channel unlocked.")
 
 
 auto_role_id = None
 
 
-@commands.command(name="role")
-@has_staff_role()
-async def role_command(ctx, role: discord.Role):
-    await ctx.send(f"Assigning {role.mention} to all members...")
+@app_commands.command(name="role", description="Assign a role to all members")
+@app_commands.describe(role="Role to assign")
+@app_commands.default_permissions(manage_messages=True)
+async def role_command(interaction: discord.Interaction, role: discord.Role):
+    staff_role = interaction.guild.get_role(STAFF_ROLE_ID)
+    if not staff_role or staff_role not in interaction.user.roles:
+        await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
+        return
+    await interaction.response.send_message(f"Assigning {role.mention} to all members...")
     count = 0
     failed = 0
-    for member in ctx.guild.members:
+    for member in interaction.guild.members:
         if member.bot:
             continue
         try:
@@ -2750,15 +2763,20 @@ async def role_command(ctx, role: discord.Role):
             count += 1
         except discord.Forbidden:
             failed += 1
-    await ctx.send(f"Done. Assigned to **{count}** members. Failed: **{failed}**.")
+    await interaction.followup.send(f"Done. Assigned to **{count}** members. Failed: **{failed}**.")
 
 
-@commands.command(name="autorole")
-@has_staff_role()
-async def autorole_command(ctx, role: discord.Role):
+@app_commands.command(name="autorole", description="Auto-assign a role to new members")
+@app_commands.describe(role="Role to auto-assign on join")
+@app_commands.default_permissions(manage_messages=True)
+async def autorole_command(interaction: discord.Interaction, role: discord.Role):
     global auto_role_id
+    staff_role = interaction.guild.get_role(STAFF_ROLE_ID)
+    if not staff_role or staff_role not in interaction.user.roles:
+        await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
+        return
     auto_role_id = role.id
-    await ctx.send(f"Auto-role set to {role.mention}. New members will receive this role on join.")
+    await interaction.response.send_message(f"Auto-role set to {role.mention}. New members will receive this role on join.")
 
 
 async def on_member_join(member):
@@ -2790,37 +2808,44 @@ def parse_duration(duration_str):
     return None
 
 
-@commands.command(name="purge")
-@has_staff_role()
-async def purge_command(ctx, count: int):
+@app_commands.command(name="purge", description="Delete messages from this channel")
+@app_commands.describe(count="Number of messages to delete (1-100)")
+@app_commands.default_permissions(manage_messages=True)
+async def purge_command(interaction: discord.Interaction, count: int):
+    role = interaction.guild.get_role(STAFF_ROLE_ID)
+    if not role or role not in interaction.user.roles:
+        await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
+        return
     if count < 1 or count > 100:
-        await ctx.send("Pick a number between 1 and 100.", delete_after=5)
+        await interaction.response.send_message("Pick a number between 1 and 100.", ephemeral=True)
         return
-    deleted = await ctx.channel.purge(limit=count + 1)
-    msg = await ctx.send(f"Purged **{len(deleted) - 1}** messages.")
-    await asyncio.sleep(3)
-    await msg.delete()
+    await interaction.response.send_message(f"Purging {count} messages...")
+    deleted = await interaction.channel.purge(limit=count + 1)
+    await interaction.followup.send(f"Purged **{len(deleted) - 1}** messages.")
 
 
-@commands.command(name="ban")
-@has_staff_role()
-async def ban_command(ctx, member: discord.Member = None, duration: str = None, *, reason: str = None):
-    if not member:
-        await ctx.send("Usage: `?ban @user [duration] [reason]`", delete_after=5)
+@app_commands.command(name="ban", description="Ban a member")
+@app_commands.describe(member="Member to ban", duration="Duration (e.g. 10m, 2h, 1d)", reason="Reason for the ban")
+@app_commands.default_permissions(manage_messages=True)
+async def ban_command(interaction: discord.Interaction, member: discord.Member, duration: str = None, reason: str = None):
+    role = interaction.guild.get_role(STAFF_ROLE_ID)
+    if not role or role not in interaction.user.roles:
+        await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
         return
-    if member.id == ctx.author.id:
-        await ctx.send("You can't ban yourself.", delete_after=5)
+    if member.id == interaction.user.id:
+        await interaction.response.send_message("You can't ban yourself.", ephemeral=True)
         return
-    if member.guild_permissions.manage_messages and ctx.author.id not in ADMIN_IDS:
-        await ctx.send("You can't ban staff.", delete_after=5)
+    if member.guild_permissions.manage_messages and interaction.user.id not in ADMIN_IDS:
+        await interaction.response.send_message("You can't ban staff.", ephemeral=True)
         return
-    if ctx.author.id not in ADMIN_IDS and not reason:
-        await ctx.send("You must provide a reason. Usage: `?ban @user [duration] reason`", delete_after=5)
+    if interaction.user.id not in ADMIN_IDS and not reason:
+        await interaction.response.send_message("You must provide a reason.", ephemeral=True)
         return
     reason = reason or "No reason provided"
+    await interaction.response.send_message(f"Banning {member}...")
     dm_embed = discord.Embed(
         title="You have been banned",
-        description=f"**Server:** {ctx.guild.name}\n**Reason:** {reason}\n**Duration:** {duration or 'Permanent'}",
+        description=f"**Server:** {interaction.guild.name}\n**Reason:** {reason}\n**Duration:** {duration or 'Permanent'}",
         color=discord.Color.red(),
     )
     dm_embed.add_field(name="Invite", value=INVITE_LINK, inline=False)
@@ -2836,15 +2861,15 @@ async def ban_command(ctx, member: discord.Member = None, duration: str = None, 
     if duration:
         td = parse_duration(duration)
         if td:
-            await member.ban(reason=f"Banned by {ctx.author} | {reason} | Duration: {duration}")
-            await ctx.send(f"🔨 **{member}** banned for **{duration}**. Reason: {reason}")
+            await member.ban(reason=f"Banned by {interaction.user} | {reason} | Duration: {duration}")
+            await interaction.followup.send(f"🔨 **{member}** banned for **{duration}**. Reason: {reason}")
             await asyncio.sleep(td.total_seconds())
             try:
-                await ctx.guild.unban(member, reason="Ban duration expired")
+                await interaction.guild.unban(member, reason="Ban duration expired")
                 try:
                     await member.send(embed=discord.Embed(
                         title="Your ban has expired",
-                        description=f"**Server:** {ctx.guild.name}\nYour punishment has finished. You may rejoin.",
+                        description=f"**Server:** {interaction.guild.name}\nYour punishment has finished. You may rejoin.",
                         color=discord.Color.green(),
                     ))
                     await member.send(embed=discord.Embed(
@@ -2853,34 +2878,36 @@ async def ban_command(ctx, member: discord.Member = None, duration: str = None, 
                     ))
                 except discord.Forbidden:
                     pass
-                await ctx.send(f"🔓 **{member}** has been unbanned (ban expired).")
+                await interaction.followup.send(f"🔓 **{member}** has been unbanned (ban expired).")
             except Exception:
                 pass
             return
-    await member.ban(reason=f"Banned by {ctx.author} | {reason}")
-    await ctx.send(f"🔨 **{member}** banned permanently. Reason: {reason}")
+    await member.ban(reason=f"Banned by {interaction.user} | {reason}")
+    await interaction.followup.send(f"🔨 **{member}** banned permanently. Reason: {reason}")
 
 
-@commands.command(name="kick")
-@has_staff_role()
-async def kick_command(ctx, member: discord.Member = None, *, reason: str = None):
-    if not member:
-        await ctx.send("Usage: `?kick @user [reason]`", delete_after=5)
+@app_commands.command(name="kick", description="Kick a member")
+@app_commands.describe(member="Member to kick", reason="Reason for the kick")
+@app_commands.default_permissions(manage_messages=True)
+async def kick_command(interaction: discord.Interaction, member: discord.Member, reason: str = None):
+    role = interaction.guild.get_role(STAFF_ROLE_ID)
+    if not role or role not in interaction.user.roles:
+        await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
         return
-    if member.id == ctx.author.id:
-        await ctx.send("You can't kick yourself.", delete_after=5)
+    if member.id == interaction.user.id:
+        await interaction.response.send_message("You can't kick yourself.", ephemeral=True)
         return
-    if member.guild_permissions.manage_messages and ctx.author.id not in ADMIN_IDS:
-        await ctx.send("You can't kick staff.", delete_after=5)
+    if member.guild_permissions.manage_messages and interaction.user.id not in ADMIN_IDS:
+        await interaction.response.send_message("You can't kick staff.", ephemeral=True)
         return
-    if ctx.author.id not in ADMIN_IDS and not reason:
-        await ctx.send("You must provide a reason. Usage: `?kick @user reason`", delete_after=5)
+    if interaction.user.id not in ADMIN_IDS and not reason:
+        await interaction.response.send_message("You must provide a reason.", ephemeral=True)
         return
     reason = reason or "No reason provided"
     try:
         await member.send(embed=discord.Embed(
             title="You have been kicked",
-            description=f"**Server:** {ctx.guild.name}\n**Reason:** {reason}",
+            description=f"**Server:** {interaction.guild.name}\n**Reason:** {reason}",
             color=discord.Color.orange(),
         ))
         await member.send(embed=discord.Embed(
@@ -2889,35 +2916,37 @@ async def kick_command(ctx, member: discord.Member = None, *, reason: str = None
         ))
     except discord.Forbidden:
         pass
-    await member.kick(reason=f"Kicked by {ctx.author} | {reason}")
-    await ctx.send(f"👢 **{member}** has been kicked. Reason: {reason}")
+    await member.kick(reason=f"Kicked by {interaction.user} | {reason}")
+    await interaction.response.send_message(f"👢 **{member}** has been kicked. Reason: {reason}")
 
 
-@commands.command(name="mute")
-@has_staff_role()
-async def mute_command(ctx, member: discord.Member = None, duration: str = None, *, reason: str = None):
-    if not member or not duration:
-        await ctx.send("Usage: `?mute @user <duration> [reason]`\nDuration: `10m`, `2h`, `1d`", delete_after=5)
+@app_commands.command(name="mute", description="Timeout a member")
+@app_commands.describe(member="Member to mute", duration="Duration (e.g. 10m, 2h, 1d)", reason="Reason for the mute")
+@app_commands.default_permissions(manage_messages=True)
+async def mute_command(interaction: discord.Interaction, member: discord.Member, duration: str, reason: str = None):
+    role = interaction.guild.get_role(STAFF_ROLE_ID)
+    if not role or role not in interaction.user.roles:
+        await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
         return
-    if member.id == ctx.author.id:
-        await ctx.send("You can't mute yourself.", delete_after=5)
+    if member.id == interaction.user.id:
+        await interaction.response.send_message("You can't mute yourself.", ephemeral=True)
         return
-    if member.guild_permissions.manage_messages and ctx.author.id not in ADMIN_IDS:
-        await ctx.send("You can't mute staff.", delete_after=5)
+    if member.guild_permissions.manage_messages and interaction.user.id not in ADMIN_IDS:
+        await interaction.response.send_message("You can't mute staff.", ephemeral=True)
         return
-    if ctx.author.id not in ADMIN_IDS and not reason:
-        await ctx.send("You must provide a reason. Usage: `?mute @user <duration> reason`", delete_after=5)
+    if interaction.user.id not in ADMIN_IDS and not reason:
+        await interaction.response.send_message("You must provide a reason.", ephemeral=True)
         return
     td = parse_duration(duration)
     if not td:
-        await ctx.send("Invalid duration. Use: `10m`, `2h`, `1d`", delete_after=5)
+        await interaction.response.send_message("Invalid duration. Use: `10m`, `2h`, `1d`", ephemeral=True)
         return
     reason = reason or "No reason provided"
     until = discord.utils.utcnow() + td
     try:
         await member.send(embed=discord.Embed(
             title="You have been muted",
-            description=f"**Server:** {ctx.guild.name}\n**Duration:** {duration}\n**Reason:** {reason}\n**Expires:** <t:{int(until.timestamp())}:R>",
+            description=f"**Server:** {interaction.guild.name}\n**Duration:** {duration}\n**Reason:** {reason}\n**Expires:** <t:{int(until.timestamp())}:R>",
             color=discord.Color.greyple(),
         ))
         await member.send(embed=discord.Embed(
@@ -2926,53 +2955,58 @@ async def mute_command(ctx, member: discord.Member = None, duration: str = None,
         ))
     except discord.Forbidden:
         pass
-    await member.timeout(td, reason=f"Muted by {ctx.author} | {reason} | Duration: {duration}")
-    await ctx.send(f"🔇 **{member}** muted for **{duration}**. Reason: {reason}")
+    await member.timeout(td, reason=f"Muted by {interaction.user} | {reason} | Duration: {duration}")
+    await interaction.response.send_message(f"🔇 **{member}** muted for **{duration}**. Reason: {reason}")
 
 
-@commands.command(name="unmute")
-@has_staff_role()
-async def unmute_command(ctx, member: discord.Member = None):
-    if not member:
-        await ctx.send("Usage: `?unmute @user`", delete_after=5)
+@app_commands.command(name="unmute", description="Remove timeout from a member")
+@app_commands.describe(member="Member to unmute")
+@app_commands.default_permissions(manage_messages=True)
+async def unmute_command(interaction: discord.Interaction, member: discord.Member):
+    role = interaction.guild.get_role(STAFF_ROLE_ID)
+    if not role or role not in interaction.user.roles:
+        await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
         return
-    muted_role = discord.utils.get(ctx.guild.roles, name="Muted")
+    muted_role = discord.utils.get(interaction.guild.roles, name="Muted")
     if muted_role and muted_role in member.roles:
-        await member.remove_roles(muted_role, reason=f"Unmuted by {ctx.author}")
+        await member.remove_roles(muted_role, reason=f"Unmuted by {interaction.user}")
     if member.is_timed_out():
-        await member.timeout(None, reason=f"Unmuted by {ctx.author}")
+        await member.timeout(None, reason=f"Unmuted by {interaction.user}")
     try:
         await member.send(embed=discord.Embed(
             title="You have been unmuted",
-            description=f"**Server:** {ctx.guild.name}\nInvite: {INVITE_LINK}",
+            description=f"**Server:** {interaction.guild.name}\nInvite: {INVITE_LINK}",
             color=discord.Color.green(),
         ))
     except discord.Forbidden:
         pass
-    await ctx.send(f"🔊 **{member}** has been unmuted.")
+    await interaction.response.send_message(f"🔊 **{member}** has been unmuted.")
 
 
-@commands.command(name="unban")
-@has_staff_role()
-async def unban_command(ctx, user_id: int = None):
-    if not user_id:
-        await ctx.send("Usage: `?unban <userid>`", delete_after=5)
+@app_commands.command(name="unban", description="Unban a user by ID")
+@app_commands.describe(user_id="User ID to unban")
+@app_commands.default_permissions(manage_messages=True)
+async def unban_command(interaction: discord.Interaction, user_id: str):
+    role = interaction.guild.get_role(STAFF_ROLE_ID)
+    if not role or role not in interaction.user.roles:
+        await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
         return
+    uid = int(user_id)
     try:
-        user = await ctx.guild.fetch_ban(discord.Object(user_id))
+        user = await interaction.guild.fetch_ban(discord.Object(uid))
     except discord.NotFound:
-        await ctx.send("That user isn't banned.", delete_after=5)
+        await interaction.response.send_message("That user isn't banned.", ephemeral=True)
         return
-    await ctx.guild.unban(user.user, reason=f"Unbanned by {ctx.author}")
+    await interaction.guild.unban(user.user, reason=f"Unbanned by {interaction.user}")
     try:
         await user.user.send(embed=discord.Embed(
             title="You have been unbanned",
-            description=f"**Server:** {ctx.guild.name}\nInvite: {INVITE_LINK}",
+            description=f"**Server:** {interaction.guild.name}\nInvite: {INVITE_LINK}",
             color=discord.Color.green(),
         ))
     except discord.Forbidden:
         pass
-    await ctx.send(f"🔓 **{user.user}** has been unbanned.")
+    await interaction.response.send_message(f"🔓 **{user.user}** has been unbanned.")
 
 
 @app_commands.command(name="giveaway", description="Create a giveaway")
@@ -3097,38 +3131,37 @@ async def help_command(interaction: discord.Interaction):
         color=discord.Color.blurple(),
     )
     embed.add_field(
-        name="Staff (Slash Commands)",
+        name="Moderation",
         value=(
-            "`/giveaway <winners> <duration> <title>` — Create giveaway\n"
-            "`/endgiveaway <message_id>` — End giveaway early\n"
-            "`/deletechannel` — Delete your private channel"
+            "`/ban <member> [duration] [reason]` — Ban a member\n"
+            "`/unban <user_id>` — Unban a user\n"
+            "`/kick <member> [reason]` — Kick a member\n"
+            "`/mute <member> <duration> [reason]` — Timeout a member\n"
+            "`/unmute <member>` — Remove timeout\n"
+            "`/purge <count>` — Delete messages (1-100)\n"
+            "`/lock` — Lock channel\n"
+            "`/unlock` — Unlock channel"
         ),
         inline=False,
     )
     embed.add_field(
-        name="Moderation (Prefix Commands)",
+        name="Roles",
         value=(
-            "`?ban @user [duration] [reason]` — Ban a user\n"
-            "`?unban <userid>` — Unban a user\n"
-            "`?kick @user [reason]` — Kick a user\n"
-            "`?mute @user <duration> [reason]` — Timeout a user\n"
-            "`?unmute @user` — Remove timeout\n"
-            "`?purge <count>` — Delete messages (1-100)\n"
-            "`?lock` — Lock channel\n"
-            "`?unlock` — Unlock channel"
+            "`/role <role>` — Assign role to all members\n"
+            "`/autorole <role>` — Auto-assign role on join"
         ),
         inline=False,
     )
     embed.add_field(
-        name="Roles (Prefix Commands)",
+        name="Giveaway",
         value=(
-            "`?role @role` — Assign role to all members\n"
-            "`?autorole @role` — Auto-assign role on join"
+            "`/giveaway [winners] [duration] [title]` — Create giveaway\n"
+            "`/endgiveaway <message_id>` — End giveaway early"
         ),
         inline=False,
     )
     embed.add_field(
-        name="Services (Slash Commands)",
+        name="Services",
         value=(
             "Use the service panels in the channel list for:\n"
             "Temp Mail, File Share, Password Generator, IP Lookup,\n"
@@ -3270,16 +3303,6 @@ def main():
 
     bot = Bot()
     _bot_instance = bot
-    bot.add_command(lock_command)
-    bot.add_command(unlock_command)
-    bot.add_command(role_command)
-    bot.add_command(autorole_command)
-    bot.add_command(purge_command)
-    bot.add_command(ban_command)
-    bot.add_command(kick_command)
-    bot.add_command(mute_command)
-    bot.add_command(unmute_command)
-    bot.add_command(unban_command)
     bot.event(on_member_join)
     bot.add_view(TempMailPanelView(bot))
     bot.add_view(DeleteAccountView(bot))
