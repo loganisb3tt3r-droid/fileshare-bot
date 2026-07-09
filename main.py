@@ -33,6 +33,7 @@ CURRENCY_CONVERTER_PANEL_CHANNEL_ID = 1524538928231747624
 USER_INFO_PANEL_CHANNEL_ID = 1524539019562717385
 CRYPTO_LOOKUP_PANEL_CHANNEL_ID = 1524539205039161554
 TRANSLATOR_PANEL_CHANNEL_ID = 1524539284227620864
+FAKE_IP_PANEL_CHANNEL_ID = 1524816811928060037
 TIER_ALLOWED_USERS = [763815168894828576, 529014657537540096]
 CATEGORY_ID = 1524464161113899080
 NEW_FEATURES_CATEGORY_ID = 1524540870848807073
@@ -587,6 +588,20 @@ class Bot(commands.Bot):
                 )
                 await tr_channel.send(embed=embed, view=TranslatorPanelView(self))
 
+        fi_channel = self.get_channel(FAKE_IP_PANEL_CHANNEL_ID)
+        if isinstance(fi_channel, discord.TextChannel):
+            async for message in fi_channel.history(limit=50):
+                if message.author == self.user and message.embeds:
+                    if message.embeds[0].title == "Fake IP Generator":
+                        break
+            else:
+                embed = discord.Embed(
+                    title="Fake IP Generator",
+                    description="Click the button below to generate a realistic-looking fake IP address.",
+                    color=discord.Color.dark_red(),
+                )
+                await fi_channel.send(embed=embed, view=FakeIPPanelView(self))
+
     @tasks.loop(seconds=30)
     async def poll_messages(self):
         await self.wait_until_ready()
@@ -782,8 +797,8 @@ class DeleteAccountView(discord.ui.View):
                 await interaction.followup.send("No temp mail account found for this channel.", ephemeral=True)
                 return
             owner_id = account.get("owner_id")
-            if interaction.user.id != owner_id and interaction.user.id != ADMIN_ID:
-                await interaction.followup.send("Only the owner or admin can delete this temp mail.", ephemeral=True)
+            if interaction.user.id != owner_id and not has_staff_permission(interaction.user, interaction.guild):
+                await interaction.followup.send("Only the owner or staff can delete this temp mail.", ephemeral=True)
                 return
             if not self.bot.mailtm:
                 await interaction.followup.send("Mail service not ready.", ephemeral=True)
@@ -822,11 +837,11 @@ class FileShareDeleteView(discord.ui.View):
                 if data.get("channel_id") == interaction.channel_id:
                     session_to_delete = sid
                     break
-            is_admin = interaction.user.id == ADMIN_ID
+            is_admin = has_staff_permission(interaction.user, interaction.guild)
             if session_to_delete:
                 owner_id = sessions[session_to_delete].get("owner_id")
                 if interaction.user.id != owner_id and not is_admin:
-                    await interaction.followup.send("Only the owner or admin can delete this.", ephemeral=True)
+                    await interaction.followup.send("Only the owner or staff can delete this.", ephemeral=True)
                     return
                 del sessions[session_to_delete]
                 save_sessions(sessions)
@@ -1034,10 +1049,10 @@ class PasswordGenConfigView(discord.ui.View):
     async def delete_channel(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True, thinking=True)
         config = password_configs.get(interaction.channel_id)
-        is_admin = interaction.user.id == ADMIN_ID
+        is_admin = has_staff_permission(interaction.user, interaction.guild)
         if config:
             if interaction.user.id != config["owner_id"] and not is_admin:
-                await interaction.followup.send("Only the owner or admin can delete this.", ephemeral=True)
+                await interaction.followup.send("Only the owner or staff can delete this.", ephemeral=True)
                 return
             del password_configs[interaction.channel_id]
         elif not is_admin:
@@ -1076,10 +1091,10 @@ class PasswordGenDeleteView(discord.ui.View):
         await interaction.response.defer(ephemeral=True, thinking=True)
         try:
             config = password_configs.get(interaction.channel_id)
-            is_admin = interaction.user.id == ADMIN_ID
+            is_admin = has_staff_permission(interaction.user, interaction.guild)
             if config:
                 if interaction.user.id != config["owner_id"] and not is_admin:
-                    await interaction.followup.send("Only the owner or admin can delete this.", ephemeral=True)
+                    await interaction.followup.send("Only the owner or staff can delete this.", ephemeral=True)
                     return
                 del password_configs[interaction.channel_id]
             elif not is_admin:
@@ -1691,7 +1706,10 @@ class PasswordBreachPanelView(discord.ui.View):
 
     @discord.ui.button(label="Password Breach Check", style=discord.ButtonStyle.primary, custom_id="pwbreach_create")
     async def create_pwbreach(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=True, thinking=True)
+        try:
+            await interaction.response.defer(ephemeral=True, thinking=True)
+        except discord.errors.NotFound:
+            return
         try:
             guild = interaction.guild
             if not guild:
@@ -2613,6 +2631,108 @@ class TranslatorConfigView(discord.ui.View):
             print(f"[TRANSLATOR] Delete error: {e}")
 
 
+# ─── Fake IP Generator ──────────────────────────────────────────────────────
+
+class FakeIPPanelView(discord.ui.View):
+    def __init__(self, bot: Bot):
+        super().__init__(timeout=None)
+        self.bot = bot
+
+    @discord.ui.button(label="Fake IP Generator", style=discord.ButtonStyle.primary, custom_id="fakeip_create")
+    async def create_fakeip(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        try:
+            guild = interaction.guild
+            if not guild:
+                await interaction.followup.send("Guild not found.", ephemeral=True)
+                return
+            category = guild.get_channel(NEW_FEATURES_CATEGORY_ID)
+            if not isinstance(category, discord.CategoryChannel):
+                await interaction.followup.send("Category not found.", ephemeral=True)
+                return
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+            }
+            admin_member = guild.get_member(ADMIN_ID)
+            if admin_member:
+                overwrites[admin_member] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+            lock_role = guild.get_role(1524549659035701288)
+            if lock_role:
+                overwrites[lock_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+            suffix = random_string(4)
+            channel_name = f"fake-ip-{interaction.user.name}-{suffix}".lower().replace(" ", "-")
+            ch = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
+            embed = discord.Embed(
+                title="Fake IP Generator",
+                description="Click the button below to generate a realistic-looking fake IP address for any name or username.\n\n**For entertainment/prank purposes only.**",
+                color=discord.Color.dark_red(),
+            )
+            msg = await ch.send(content=interaction.user.mention, embed=embed, view=FakeIPConfigView())
+            await msg.pin()
+            await interaction.followup.send(f"Your fake IP generator channel has been created: {ch.mention}", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"Unexpected error: {e}", ephemeral=True)
+
+
+class FakeIPModal(discord.ui.Modal, title="Fake IP Generator"):
+    name_input = discord.ui.TextInput(
+        label="Name or Username",
+        placeholder="e.g. xXDarkSlayerXx",
+        style=discord.TextStyle.short,
+        min_length=1,
+        max_length=50,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        name = self.name_input.value.strip()
+        h = hashlib.md5(name.encode()).hexdigest()
+        ip = f"{int(h[0:2], 16)}.{int(h[2:4], 16)}.{int(h[4:6], 16)}.{int(h[6:8], 16)}"
+        city_hash = int(h[8:12], 16)
+        cities = ["New York", "Los Angeles", "Chicago", "Houston", "Phoenix", "San Antonio",
+                   "San Diego", "Dallas", "Austin", "Jacksonville", "Fort Worth", "Columbus",
+                   "Charlotte", "Indianapolis", "San Francisco", "Seattle", "Denver", "Boston",
+                   "Nashville", "Portland", "Las Vegas", "Miami", "Atlanta", "Detroit"]
+        city = cities[city_hash % len(cities)]
+        state_hash = int(h[12:16], 16)
+        states = ["NY", "CA", "IL", "TX", "AZ", "TX", "CA", "TX", "TX", "FL",
+                   "TX", "OH", "NC", "IN", "CA", "WA", "CO", "MA", "TN", "OR", "NV", "FL", "GA", "MI"]
+        state = states[state_hash % len(states)]
+        isp_hash = int(h[16:24], 16)
+        isps = ["Comcast", "AT&T", "Verizon", "Spectrum", "Xfinity", "Cox", "CenturyLink",
+                 "Frontier", "Mediacom", "Windstream", "EarthLink", "Google Fiber"]
+        isp = isps[isp_hash % len(isps)]
+        embed = discord.Embed(
+            title=f"Fake IP — {name}",
+            color=discord.Color.dark_red(),
+        )
+        embed.add_field(name="IP Address", value=f"`{ip}`", inline=True)
+        embed.add_field(name="Location", value=f"{city}, {state}", inline=True)
+        embed.add_field(name="ISP", value=f"`{isp}`", inline=True)
+        embed.add_field(name="Hostname", value=f"`{name.lower().replace(' ', '-')}.dynamic.{isp.lower().replace(' ', '')}.com`", inline=False)
+        embed.set_footer(text="This is a fake IP — not a real address. For entertainment only.")
+        await interaction.response.send_message(embed=embed)
+
+
+class FakeIPConfigView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Generate Fake IP", style=discord.ButtonStyle.red, custom_id="fakeip_generate", row=0)
+    async def generate(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(FakeIPModal())
+
+    @discord.ui.button(label="Delete Channel", style=discord.ButtonStyle.danger, custom_id="fakeip_delete", row=1)
+    async def delete_channel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        try:
+            await interaction.response.defer(ephemeral=True, thinking=True)
+            await interaction.followup.send("Channel deleted.", ephemeral=True)
+            await asyncio.sleep(2)
+            await interaction.channel.delete()
+        except Exception as e:
+            print(f"[FAKEIP] Delete error: {e}")
+
+
 @app_commands.command(name="inbox", description="Fetch your temp mail inbox")
 async def inbox_command(interaction: discord.Interaction):
     bot: Bot = interaction.client
@@ -2708,6 +2828,15 @@ STAFF_ROLE_ID = 1524549659035701288
 ADMIN_IDS = [763815168894828576, 529014657537540096]
 
 active_giveaways = {}
+
+
+def has_staff_permission(user, guild):
+    if user.id in ADMIN_IDS:
+        return True
+    role = guild.get_role(STAFF_ROLE_ID)
+    if role and role in user.roles:
+        return True
+    return False
 
 
 @commands.hybrid_command(name="lock", description="Lock the current channel")
@@ -3166,12 +3295,12 @@ async def help_command(ctx: commands.Context):
 
 @app_commands.command(name="deletechannel", description="Delete your private channel")
 async def deletechannel_command(interaction: discord.Interaction):
-    is_admin = interaction.user.id == ADMIN_ID
+    is_staff = has_staff_permission(interaction.user, interaction.guild)
 
     account = interaction.client.channel_accounts.get(interaction.channel_id)
     if account:
-        if interaction.user.id != account.get("owner_id") and not is_admin:
-            await interaction.response.send_message("Only the channel owner can delete this.", ephemeral=True)
+        if interaction.user.id != account.get("owner_id") and not is_staff:
+            await interaction.response.send_message("Only the channel owner or staff can delete this.", ephemeral=True)
             return
         try:
             if interaction.client.mailtm:
@@ -3197,8 +3326,8 @@ async def deletechannel_command(interaction: discord.Interaction):
     sessions = load_sessions()
     for sid, data in list(sessions.items()):
         if data.get("channel_id") == interaction.channel_id:
-            if interaction.user.id != data.get("owner_id") and not is_admin:
-                await interaction.response.send_message("Only the channel owner can delete this.", ephemeral=True)
+            if interaction.user.id != data.get("owner_id") and not is_staff:
+                await interaction.response.send_message("Only the channel owner or staff can delete this.", ephemeral=True)
                 return
             del sessions[sid]
             save_sessions(sessions)
@@ -3209,8 +3338,8 @@ async def deletechannel_command(interaction: discord.Interaction):
 
     if interaction.channel_id in password_configs:
         config = password_configs[interaction.channel_id]
-        if interaction.user.id != config.get("owner_id") and not is_admin:
-            await interaction.response.send_message("Only the channel owner can delete this.", ephemeral=True)
+        if interaction.user.id != config.get("owner_id") and not is_staff:
+            await interaction.response.send_message("Only the channel owner or staff can delete this.", ephemeral=True)
             return
         del password_configs[interaction.channel_id]
         await interaction.response.send_message("Channel deleted.", ephemeral=True)
@@ -3334,6 +3463,8 @@ def main():
     bot.add_view(CryptoLookupConfigView())
     bot.add_view(TranslatorPanelView(bot))
     bot.add_view(TranslatorConfigView())
+    bot.add_view(FakeIPPanelView(bot))
+    bot.add_view(FakeIPConfigView())
     bot.run(token)
 
 
