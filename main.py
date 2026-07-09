@@ -363,7 +363,7 @@ class Bot(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.members = True
-        super().__init__(command_prefix=["!", "?"], intents=intents)
+        super().__init__(command_prefix=["!", "?"], intents=intents, help_command=None)
         self.session: Optional[aiohttp.ClientSession] = None
         self.mailtm: Optional[MailTmClient] = None
         self.user_accounts: Dict[int, list] = {}
