@@ -241,6 +241,8 @@ def cleanup_files():
 @flask_app.route("/<path:path>")
 def index(path):
     session_id = request.args.get("session", "")
+    if not session_id:
+        return "Access denied", 403
     return render_template_string(HTML_TEMPLATE, session_id=session_id, uploaded=False)
 
 
