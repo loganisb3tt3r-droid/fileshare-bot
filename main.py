@@ -1575,7 +1575,10 @@ class TierGamemodeModal(discord.ui.Modal, title="Tier Lookup"):
                 if not found_any:
                     continue
 
-                await interaction.followup.send(embed=embed)
+                try:
+                    await interaction.followup.send(embed=embed)
+                except discord.HTTPException:
+                    pass
         else:
             mapping = GAMEMODE_MAP[gamemode]
             for account_name in account_names:
@@ -1611,7 +1614,10 @@ class TierGamemodeModal(discord.ui.Modal, title="Tier Lookup"):
                 if not found_any:
                     continue
 
-                await interaction.followup.send(embed=embed)
+                try:
+                    await interaction.followup.send(embed=embed)
+                except discord.HTTPException:
+                    pass
 
 
 class TierConfigView(discord.ui.View):
@@ -2667,7 +2673,7 @@ class FakeIPPanelView(discord.ui.View):
             ch = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
             embed = discord.Embed(
                 title="Fake IP Generator",
-                description="Click the button below to generate a realistic-looking fake IP address for any name or username.\n\n**For entertainment/prank purposes only.**",
+                description="Click the button below to generate a realistic-looking fake IP address.\n\n**For entertainment/prank purposes only.**",
                 color=discord.Color.dark_red(),
             )
             msg = await ch.send(content=interaction.user.mention, embed=embed, view=FakeIPConfigView())
@@ -2677,43 +2683,29 @@ class FakeIPPanelView(discord.ui.View):
             await interaction.followup.send(f"Unexpected error: {e}", ephemeral=True)
 
 
-class FakeIPModal(discord.ui.Modal, title="Fake IP Generator"):
-    name_input = discord.ui.TextInput(
-        label="Name or Username",
-        placeholder="e.g. xXDarkSlayerXx",
-        style=discord.TextStyle.short,
-        min_length=1,
-        max_length=50,
+def generate_fake_ip_embed():
+    ip = f"{random.randint(1,223)}.{random.randint(0,255)}.{random.randint(0,255)}.{random.randint(1,254)}"
+    cities = ["New York", "Los Angeles", "Chicago", "Houston", "Phoenix", "San Antonio",
+               "San Diego", "Dallas", "Austin", "Jacksonville", "Fort Worth", "Columbus",
+               "Charlotte", "Indianapolis", "San Francisco", "Seattle", "Denver", "Boston",
+               "Nashville", "Portland", "Las Vegas", "Miami", "Atlanta", "Detroit"]
+    states = ["NY", "CA", "IL", "TX", "AZ", "TX", "CA", "TX", "TX", "FL",
+               "TX", "OH", "NC", "IN", "CA", "WA", "CO", "MA", "TN", "OR", "NV", "FL", "GA", "MI"]
+    isps = ["Comcast", "AT&T", "Verizon", "Spectrum", "Xfinity", "Cox", "CenturyLink",
+             "Frontier", "Mediacom", "Windstream", "EarthLink", "Google Fiber"]
+    idx = random.randint(0, len(cities) - 1)
+    city = cities[idx]
+    state = states[idx]
+    isp = random.choice(isps)
+    embed = discord.Embed(
+        title="IP Lookup Results",
+        color=discord.Color.blue(),
     )
-
-    async def on_submit(self, interaction: discord.Interaction):
-        name = self.name_input.value.strip()
-        h = hashlib.md5(name.encode()).hexdigest()
-        ip = f"{int(h[0:2], 16)}.{int(h[2:4], 16)}.{int(h[4:6], 16)}.{int(h[6:8], 16)}"
-        city_hash = int(h[8:12], 16)
-        cities = ["New York", "Los Angeles", "Chicago", "Houston", "Phoenix", "San Antonio",
-                   "San Diego", "Dallas", "Austin", "Jacksonville", "Fort Worth", "Columbus",
-                   "Charlotte", "Indianapolis", "San Francisco", "Seattle", "Denver", "Boston",
-                   "Nashville", "Portland", "Las Vegas", "Miami", "Atlanta", "Detroit"]
-        city = cities[city_hash % len(cities)]
-        state_hash = int(h[12:16], 16)
-        states = ["NY", "CA", "IL", "TX", "AZ", "TX", "CA", "TX", "TX", "FL",
-                   "TX", "OH", "NC", "IN", "CA", "WA", "CO", "MA", "TN", "OR", "NV", "FL", "GA", "MI"]
-        state = states[state_hash % len(states)]
-        isp_hash = int(h[16:24], 16)
-        isps = ["Comcast", "AT&T", "Verizon", "Spectrum", "Xfinity", "Cox", "CenturyLink",
-                 "Frontier", "Mediacom", "Windstream", "EarthLink", "Google Fiber"]
-        isp = isps[isp_hash % len(isps)]
-        embed = discord.Embed(
-            title=f"Fake IP — {name}",
-            color=discord.Color.dark_red(),
-        )
-        embed.add_field(name="IP Address", value=f"`{ip}`", inline=True)
-        embed.add_field(name="Location", value=f"{city}, {state}", inline=True)
-        embed.add_field(name="ISP", value=f"`{isp}`", inline=True)
-        embed.add_field(name="Hostname", value=f"`{name.lower().replace(' ', '-')}.dynamic.{isp.lower().replace(' ', '')}.com`", inline=False)
-        embed.set_footer(text="This is a fake IP — not a real address. For entertainment only.")
-        await interaction.response.send_message(embed=embed)
+    embed.add_field(name="IP Address", value=f"`{ip}`", inline=True)
+    embed.add_field(name="Location", value=f"{city}, {state}", inline=True)
+    embed.add_field(name="ISP", value=f"`{isp}`", inline=True)
+    embed.add_field(name="Hostname", value=f"`{ip.replace('.', '-')}.dynamic.{isp.lower().replace(' ', '')}.com`", inline=False)
+    return embed
 
 
 class FakeIPConfigView(discord.ui.View):
@@ -2722,7 +2714,15 @@ class FakeIPConfigView(discord.ui.View):
 
     @discord.ui.button(label="Generate Fake IP", style=discord.ButtonStyle.red, custom_id="fakeip_generate", row=0)
     async def generate(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(FakeIPModal())
+        try:
+            embed = generate_fake_ip_embed()
+            await interaction.response.send_message(embed=embed)
+        except Exception as e:
+            print(f"[FAKEIP] Generate error: {e}")
+            try:
+                await interaction.response.send_message(f"Error: {e}", ephemeral=True)
+            except discord.HTTPException:
+                pass
 
     @discord.ui.button(label="Delete Channel", style=discord.ButtonStyle.danger, custom_id="fakeip_delete", row=1)
     async def delete_channel(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -3113,7 +3113,8 @@ async def unban_command(ctx: commands.Context, user_id: str):
     if not role or role not in ctx.author.roles:
         await ctx.send("You don't have permission to use this command.", delete_after=5)
         return
-    uid = int(user_id)
+    cleaned = user_id.strip().strip("<@!>")
+    uid = int(cleaned)
     try:
         user = await ctx.guild.fetch_ban(discord.Object(uid))
     except discord.NotFound:
