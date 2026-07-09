@@ -423,7 +423,11 @@ class Bot(commands.Bot):
         await super().close()
 
     async def on_ready(self):
-        await self.tree.sync()
+        try:
+            synced = await self.tree.sync()
+            print(f"Synced {len(synced)} slash commands")
+        except Exception as e:
+            print(f"Failed to sync commands: {e}")
         await self.ensure_panels()
         print(f"Logged in as {self.user}")
 
