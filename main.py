@@ -40,10 +40,12 @@ NEW_FEATURES_CATEGORY_ID = 1524540870848807073
 MAILTM_BASE = "https://api.mail.tm"
 FILESHARE_URL = os.getenv("FILESHARE_URL", "http://localhost:5000")
 SESSIONS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fileshare_sessions.json")
-TOKEN = "MTUyNDQ3Mjc5NTIwNjEyMzcyMQ.GHyx83.z0ZjR3gFXBq4e5rqB_49Mu_4yHjknn81MCedD8"
+TOKEN = os.getenv("DISCORD_TOKEN", "")
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 EXPIRY_SECONDS = 3 * 60 * 60
+MAX_UPLOAD_SIZE = int(1.25 * 1024 * 1024 * 1024)
+AGGRESSIVE_EXPIRY_SECONDS = 2 * 60 * 60
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 files_db = {}
@@ -224,6 +226,15 @@ def random_string(length: int = 10) -> str:
     return "".join(random.choice(string.ascii_lowercase + string.digits) for _ in range(length))
 
 
+def get_folder_size(path):
+    total = 0
+    for f in os.listdir(path):
+        fp = os.path.join(path, f)
+        if os.path.isfile(fp):
+            total += os.path.getsize(fp)
+    return total
+
+
 def cleanup_files():
     while True:
         now = time.time()
@@ -234,6 +245,21 @@ def cleanup_files():
                 path = os.path.join(UPLOAD_DIR, fid)
                 if os.path.exists(path):
                     os.remove(path)
+
+        folder_size = get_folder_size(UPLOAD_DIR)
+        if folder_size > MAX_UPLOAD_SIZE:
+            eligible = [(fid, info) for fid, info in list(files_db.items())
+                        if now - info["uploaded_at"] > AGGRESSIVE_EXPIRY_SECONDS]
+            eligible.sort(key=lambda x: x[1]["uploaded_at"])
+            for fid, info in eligible:
+                if folder_size <= MAX_UPLOAD_SIZE:
+                    break
+                path = os.path.join(UPLOAD_DIR, fid)
+                if os.path.exists(path):
+                    folder_size -= os.path.getsize(path)
+                    os.remove(path)
+                files_db.pop(fid, None)
+
         time.sleep(60)
 
 
