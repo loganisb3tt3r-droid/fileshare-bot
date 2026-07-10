@@ -48,6 +48,7 @@ MAX_UPLOAD_SIZE = int(1.25 * 1024 * 1024 * 1024)
 AGGRESSIVE_EXPIRY_SECONDS = 2 * 60 * 60
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+MAX_TICKETS = 2
 files_db = {}
 password_configs: Dict[int, Dict] = {}
 _bot_instance: Optional['Bot'] = None
@@ -224,6 +225,18 @@ def get_tier_account_names(accounts: list) -> list:
 
 def random_string(length: int = 10) -> str:
     return "".join(random.choice(string.ascii_lowercase + string.digits) for _ in range(length))
+
+
+def count_user_open_channels(guild, user):
+    category = guild.get_channel(NEW_FEATURES_CATEGORY_ID)
+    if not isinstance(category, discord.CategoryChannel):
+        return 0
+    count = 0
+    for ch in category.channels:
+        overwrites = ch.overwrites_for(user)
+        if overwrites.view_channel:
+            count += 1
+    return count
 
 
 def get_folder_size(path):
@@ -687,6 +700,12 @@ class TempMailPanelView(discord.ui.View):
             await interaction.followup.send("Mail service not ready.", ephemeral=True)
             return
         try:
+            guild = interaction.guild
+            if guild and interaction.user.id not in ADMIN_IDS:
+                if count_user_open_channels(guild, interaction.user) >= MAX_TICKETS:
+                    await interaction.followup.send("You already have the max number of open channels (2). Close one first.", ephemeral=True)
+                    return
+
             is_admin = interaction.user.id == ADMIN_ID
             if not is_admin:
                 existing = self.bot.user_accounts.get(interaction.user.id, [])
@@ -764,6 +783,11 @@ class FileSharePanelView(discord.ui.View):
             if not guild:
                 await interaction.followup.send("Guild not found.", ephemeral=True)
                 return
+
+            if interaction.user.id not in ADMIN_IDS:
+                if count_user_open_channels(guild, interaction.user) >= MAX_TICKETS:
+                    await interaction.followup.send("You already have the max number of open channels (2). Close one first.", ephemeral=True)
+                    return
 
             category = guild.get_channel(NEW_FEATURES_CATEGORY_ID)
             if not isinstance(category, discord.CategoryChannel):
@@ -899,6 +923,11 @@ class PasswordGenPanelView(discord.ui.View):
             if not guild:
                 await interaction.followup.send("Guild not found.", ephemeral=True)
                 return
+
+            if interaction.user.id not in ADMIN_IDS:
+                if count_user_open_channels(guild, interaction.user) >= MAX_TICKETS:
+                    await interaction.followup.send("You already have the max number of open channels (2). Close one first.", ephemeral=True)
+                    return
 
             category = guild.get_channel(NEW_FEATURES_CATEGORY_ID)
             if not isinstance(category, discord.CategoryChannel):
@@ -1151,6 +1180,11 @@ class IPLookupPanelView(discord.ui.View):
             if not guild:
                 await interaction.followup.send("Guild not found.", ephemeral=True)
                 return
+
+            if interaction.user.id not in ADMIN_IDS:
+                if count_user_open_channels(guild, interaction.user) >= MAX_TICKETS:
+                    await interaction.followup.send("You already have the max number of open channels (2). Close one first.", ephemeral=True)
+                    return
 
             category = guild.get_channel(NEW_FEATURES_CATEGORY_ID)
             if not isinstance(category, discord.CategoryChannel):
@@ -1489,6 +1523,11 @@ class TierPanelView(discord.ui.View):
                 await interaction.followup.send("Guild not found.", ephemeral=True)
                 return
 
+            if interaction.user.id not in ADMIN_IDS:
+                if count_user_open_channels(guild, interaction.user) >= MAX_TICKETS:
+                    await interaction.followup.send("You already have the max number of open channels (2). Close one first.", ephemeral=True)
+                    return
+
             category = guild.get_channel(NEW_FEATURES_CATEGORY_ID)
             if not isinstance(category, discord.CategoryChannel):
                 await interaction.followup.send("Category not found.", ephemeral=True)
@@ -1749,6 +1788,12 @@ class PasswordBreachPanelView(discord.ui.View):
             if not guild:
                 await interaction.followup.send("Guild not found.", ephemeral=True)
                 return
+
+            if interaction.user.id not in ADMIN_IDS:
+                if count_user_open_channels(guild, interaction.user) >= MAX_TICKETS:
+                    await interaction.followup.send("You already have the max number of open channels (2). Close one first.", ephemeral=True)
+                    return
+
             category = guild.get_channel(NEW_FEATURES_CATEGORY_ID)
             if not isinstance(category, discord.CategoryChannel):
                 await interaction.followup.send("Category not found.", ephemeral=True)
@@ -1845,6 +1890,12 @@ class CalculatorPanelView(discord.ui.View):
             if not guild:
                 await interaction.followup.send("Guild not found.", ephemeral=True)
                 return
+
+            if interaction.user.id not in ADMIN_IDS:
+                if count_user_open_channels(guild, interaction.user) >= MAX_TICKETS:
+                    await interaction.followup.send("You already have the max number of open channels (2). Close one first.", ephemeral=True)
+                    return
+
             category = guild.get_channel(NEW_FEATURES_CATEGORY_ID)
             if not isinstance(category, discord.CategoryChannel):
                 await interaction.followup.send("Category not found.", ephemeral=True)
@@ -1971,6 +2022,12 @@ class UnitConverterPanelView(discord.ui.View):
             if not guild:
                 await interaction.followup.send("Guild not found.", ephemeral=True)
                 return
+
+            if interaction.user.id not in ADMIN_IDS:
+                if count_user_open_channels(guild, interaction.user) >= MAX_TICKETS:
+                    await interaction.followup.send("You already have the max number of open channels (2). Close one first.", ephemeral=True)
+                    return
+
             category = guild.get_channel(NEW_FEATURES_CATEGORY_ID)
             if not isinstance(category, discord.CategoryChannel):
                 await interaction.followup.send("Category not found.", ephemeral=True)
@@ -2080,6 +2137,12 @@ class CurrencyConverterPanelView(discord.ui.View):
             if not guild:
                 await interaction.followup.send("Guild not found.", ephemeral=True)
                 return
+
+            if interaction.user.id not in ADMIN_IDS:
+                if count_user_open_channels(guild, interaction.user) >= MAX_TICKETS:
+                    await interaction.followup.send("You already have the max number of open channels (2). Close one first.", ephemeral=True)
+                    return
+
             category = guild.get_channel(NEW_FEATURES_CATEGORY_ID)
             if not isinstance(category, discord.CategoryChannel):
                 await interaction.followup.send("Category not found.", ephemeral=True)
@@ -2198,6 +2261,12 @@ class UserInfoPanelView(discord.ui.View):
             if not guild:
                 await interaction.followup.send("Guild not found.", ephemeral=True)
                 return
+
+            if interaction.user.id not in ADMIN_IDS:
+                if count_user_open_channels(guild, interaction.user) >= MAX_TICKETS:
+                    await interaction.followup.send("You already have the max number of open channels (2). Close one first.", ephemeral=True)
+                    return
+
             category = guild.get_channel(NEW_FEATURES_CATEGORY_ID)
             if not isinstance(category, discord.CategoryChannel):
                 await interaction.followup.send("Category not found.", ephemeral=True)
@@ -2318,6 +2387,12 @@ class CryptoPricePanelView(discord.ui.View):
             if not guild:
                 await interaction.followup.send("Guild not found.", ephemeral=True)
                 return
+
+            if interaction.user.id not in ADMIN_IDS:
+                if count_user_open_channels(guild, interaction.user) >= MAX_TICKETS:
+                    await interaction.followup.send("You already have the max number of open channels (2). Close one first.", ephemeral=True)
+                    return
+
             category = guild.get_channel(NEW_FEATURES_CATEGORY_ID)
             if not isinstance(category, discord.CategoryChannel):
                 await interaction.followup.send("Category not found.", ephemeral=True)
@@ -2410,6 +2485,12 @@ class CryptoLookupPanelView(discord.ui.View):
             if not guild:
                 await interaction.followup.send("Guild not found.", ephemeral=True)
                 return
+
+            if interaction.user.id not in ADMIN_IDS:
+                if count_user_open_channels(guild, interaction.user) >= MAX_TICKETS:
+                    await interaction.followup.send("You already have the max number of open channels (2). Close one first.", ephemeral=True)
+                    return
+
             category = guild.get_channel(NEW_FEATURES_CATEGORY_ID)
             if not isinstance(category, discord.CategoryChannel):
                 await interaction.followup.send("Category not found.", ephemeral=True)
@@ -2543,6 +2624,12 @@ class TranslatorPanelView(discord.ui.View):
             if not guild:
                 await interaction.followup.send("Guild not found.", ephemeral=True)
                 return
+
+            if interaction.user.id not in ADMIN_IDS:
+                if count_user_open_channels(guild, interaction.user) >= MAX_TICKETS:
+                    await interaction.followup.send("You already have the max number of open channels (2). Close one first.", ephemeral=True)
+                    return
+
             category = guild.get_channel(NEW_FEATURES_CATEGORY_ID)
             if not isinstance(category, discord.CategoryChannel):
                 await interaction.followup.send("Category not found.", ephemeral=True)
@@ -2680,6 +2767,12 @@ class FakeIPPanelView(discord.ui.View):
             if not guild:
                 await interaction.followup.send("Guild not found.", ephemeral=True)
                 return
+
+            if interaction.user.id not in ADMIN_IDS:
+                if count_user_open_channels(guild, interaction.user) >= MAX_TICKETS:
+                    await interaction.followup.send("You already have the max number of open channels (2). Close one first.", ephemeral=True)
+                    return
+
             category = guild.get_channel(NEW_FEATURES_CATEGORY_ID)
             if not isinstance(category, discord.CategoryChannel):
                 await interaction.followup.send("Category not found.", ephemeral=True)
